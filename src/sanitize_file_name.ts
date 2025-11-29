@@ -1,62 +1,44 @@
-export const OBSIDIAN_ILLEGAL_SYMBOLS = ['[', ']', '#', '^', '|', ':', '\\', '/'];
+const WINDOWS_RESERVED_NAMES = [
+  'CON', 'PRN', 'AUX', 'NUL',
+  'COM0', 'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9',
+  'LPT0', 'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9',
+];
 
-const WINDOWS_CONTROL_CHARACTERS = Array.from({ length: 31 }, (_, i) => String.fromCharCode(i + 1));
-
-export const PLATFORM_ILLEGAL_SYMBOLS: Record<string, string[]> = {
-  win32: ['<', '>', ':', '"', '/', '\\', '|', '?', '*', '\0', ...WINDOWS_CONTROL_CHARACTERS],
-  darwin: ['/', ':', '\0'],
-  linux: ['/', '\0'],
-};
-
-export const DEFAULT_ILLEGAL_SYMBOLS = Array.from(
-  new Set([
-    ...OBSIDIAN_ILLEGAL_SYMBOLS,
-    // strip everything so it's the safest possible
-    ...PLATFORM_ILLEGAL_SYMBOLS.win32,
-    ...PLATFORM_ILLEGAL_SYMBOLS.darwin,
-    ...PLATFORM_ILLEGAL_SYMBOLS.linux,
-  ]),
-);
-
-function escapeForRegexCharacterClass(char: string): string {
-  if (char === ']' || char === '\\' || char === '-' || char === '^') {
-    return `\\${char}`;
-  }
-  return char;
-}
-
-function removeTrailingPeriodsAndSpaces(name: string): string {
-  return name.replace(/[.\s]+$/, '');
-}
-
-/// Sanitizes file names by replacing illegal characters with underscores and truncating length.
-/// Uses a simple, deterministic approach to ensure consistent results across platforms and
-/// avoid edge cases that could cause file system errors.
-/// Includes Windows-specific fixes for trailing periods/spaces.
 export function sanitizeFileName(
   name: string,
-  illegalSymbols: string[] = DEFAULT_ILLEGAL_SYMBOLS,
-  maxLength = 150,
+  maxLength = 140,
 ): string {
   if (!name) {
     return 'untitled';
   }
-  
-  const escapedSymbols = illegalSymbols.map(escapeForRegexCharacterClass).join('');
-  
-  let sanitized = name.replace(new RegExp(`[${escapedSymbols}]`, 'g'), '_').trim();
-  
-  sanitized = removeTrailingPeriodsAndSpaces(sanitized);
-  
+
+  let sanitized = name.toLowerCase().trim();
+
+  // Replace all special characters and spaces with hyphens
+  sanitized = sanitized.replace(/[^a-z0-9._-]/g, '-');
+
+  // Remove leading/trailing hyphens, underscores, and periods
+  sanitized = sanitized.replace(/^[._-]+/, '').replace(/[._-]+$/, '');
+
+  // Consolidate multiple consecutive hyphens into one
+  sanitized = sanitized.replace(/-+/g, '-');
+
+  // Check for Windows reserved names
+  const nameWithoutExt = sanitized.replace(/\.[^.]*$/, '');
+  if (WINDOWS_RESERVED_NAMES.includes(nameWithoutExt.toUpperCase())) {
+    sanitized = `file-${sanitized}`;
+  }
+
+  // Truncate to max length
   if (sanitized.length > maxLength) {
     sanitized = sanitized.slice(0, maxLength);
-    sanitized = removeTrailingPeriodsAndSpaces(sanitized);
+    sanitized = sanitized.replace(/[._-]+$/, '');
   }
-  
+
   if (!sanitized) {
     return 'untitled';
   }
-  
+
   return sanitized;
 }
 
